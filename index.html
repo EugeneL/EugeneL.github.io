@@ -768,15 +768,31 @@
         }
     })();
 
+    let buffer = '';
+
     //GUI function "connect"
     function connect() {
         port.connect().then(() => {
-            document.getElementById('editor').value = "connected to: " + device.hostName + "\nvendor name: " + device.vendorName + "\nchip type: " + device.chip;
+            document.getElementById('connect').innerText = device.chip;            
             port.onReceive = data => {
-                console.log(data);
-                // document.getElementById('output').value += new TextDecoder().decode(data);
-                handleData(new TextDecoder().decode(data));
-            }
+                // Добавляем новые данные в буфер
+                buffer += new TextDecoder().decode(data);
+                
+                // Ищем полные строки (разделитель - новая строка)
+                let lines = buffer.split('\r\n');
+                // Последний элемент массива - неполная строка, оставляем ее в буфере
+                buffer = lines.pop() || '';
+                
+                // Обрабатываем все полные строки
+                lines.forEach(line => {
+                    // Проверяем формат строки перед обработкой
+                    if (/^-?\d+\.\d+ -?\d+$/.test(line)) {
+                        handleData(line + '\r\n'); // Добавляем потерянный разделитель
+                    }
+                    // Можно добавить логирование для некорректных строк
+                    // else { console.warn('Invalid format:', line); }
+                });
+            };
             port.onReceiveError = error => {
                 //console.error(error);
                 port.disconnect();
