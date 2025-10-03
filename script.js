@@ -262,10 +262,12 @@ function updateViewMode(force = false) {
 
     if (histogramCanvas) {
         histogramCanvas.hidden = !showHistogram;
+        histogramCanvas.style.display = showHistogram ? 'block' : 'none';
     }
 
     if (waterfallCanvas) {
         waterfallCanvas.hidden = showHistogram;
+        waterfallCanvas.style.display = showHistogram ? 'none' : 'block';
     }
 
     waterfallRenderer.setActive(!showHistogram);
