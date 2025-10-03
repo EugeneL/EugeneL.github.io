@@ -11,7 +11,8 @@ let totalSamples = 0;
 const settings = {
     windowSize: 50,
     updateInterval: 500,
-    algorithm: 'movingAverage'
+    algorithm: 'movingAverage',
+    maxSpeedKmh: 10
 };
 
 let averagingStrategy = averagingFactory.getStrategy(settings.algorithm);
@@ -107,6 +108,11 @@ function registerEventListeners() {
         algorithmSelect.addEventListener('change', syncSettingsFromUI);
     }
 
+    const maxSpeedInput = document.getElementById('maxSpeedKmh');
+    if (maxSpeedInput) {
+        maxSpeedInput.addEventListener('change', syncSettingsFromUI);
+    }
+
     const resetButton = document.getElementById('resetChart');
     if (resetButton) {
         resetButton.addEventListener('click', resetChart);
@@ -193,11 +199,46 @@ function syncSettingsFromUI() {
     const windowSizeInput = document.getElementById('windowSize');
     const updateIntervalInput = document.getElementById('updateInterval');
     const algorithmSelect = document.getElementById('algorithm');
+    const maxSpeedInput = document.getElementById('maxSpeedKmh');
+
+    const previousStrategyId = averagingStrategy?.id;
+    const previousMaxSpeed = averagingStrategy?.id === 'kalmanFilter'
+        ? averagingStrategy.maxSpeedKmh
+        : null;
 
     settings.windowSize = parseInt(windowSizeInput?.value, 10) || settings.windowSize;
     settings.updateInterval = parseInt(updateIntervalInput?.value, 10) || settings.updateInterval;
-    settings.algorithm = algorithmSelect?.value || settings.algorithm;
-    averagingStrategy = averagingFactory.getStrategy(settings.algorithm);
+    const parsedAlgorithm = algorithmSelect?.value || settings.algorithm;
+
+    const parsedMaxSpeed = parseFloat(maxSpeedInput?.value);
+    if (Number.isFinite(parsedMaxSpeed) && parsedMaxSpeed > 0) {
+        settings.maxSpeedKmh = parsedMaxSpeed;
+    }
+
+    settings.algorithm = parsedAlgorithm;
+
+    const newStrategy = averagingFactory.getStrategy(settings.algorithm);
+    if (!newStrategy) {
+        return;
+    }
+
+    averagingStrategy = newStrategy;
+
+    const maxSpeedGroup = document.getElementById('maxSpeedGroup');
+    if (maxSpeedGroup) {
+        maxSpeedGroup.hidden = averagingStrategy.id !== 'kalmanFilter';
+    }
+
+    if (typeof averagingStrategy.setMaxSpeedKmh === 'function') {
+        averagingStrategy.setMaxSpeedKmh(settings.maxSpeedKmh);
+    }
+
+    const needsReset = averagingStrategy.id !== previousStrategyId
+        || (averagingStrategy.id === 'kalmanFilter' && previousMaxSpeed !== settings.maxSpeedKmh);
+
+    if (needsReset && typeof averagingStrategy.reset === 'function') {
+        averagingStrategy.reset();
+    }
 
     startUpdateInterval();
 }
@@ -217,6 +258,10 @@ function resetChart() {
     totalSamples = 0;
 
     chartManager.reset();
+
+    if (typeof averagingStrategy?.reset === 'function') {
+        averagingStrategy.reset();
+    }
 
     document.getElementById('totalSamples').textContent = `Всего замеров: 0`;
     document.getElementById('currentSD').textContent = `Текущее СКО: 0.00 м`;
