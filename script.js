@@ -12,7 +12,9 @@ const settings = {
     windowSize: 50,
     updateInterval: 500,
     algorithm: 'movingAverage',
-    maxSpeedKmh: 10
+    maxSpeedKmh: 10,
+    useRssiFilter: false,
+    rssiThreshold: 10
 };
 
 let averagingStrategy = averagingFactory.getStrategy(settings.algorithm);
@@ -108,6 +110,16 @@ function registerEventListeners() {
         algorithmSelect.addEventListener('change', syncSettingsFromUI);
     }
 
+    const useRssiFilterInput = document.getElementById('useRssiFilter');
+    if (useRssiFilterInput) {
+        useRssiFilterInput.addEventListener('change', syncSettingsFromUI);
+    }
+
+    const rssiThresholdInput = document.getElementById('rssiThreshold');
+    if (rssiThresholdInput) {
+        rssiThresholdInput.addEventListener('change', syncSettingsFromUI);
+    }
+
     const maxSpeedInput = document.getElementById('maxSpeedKmh');
     if (maxSpeedInput) {
         maxSpeedInput.addEventListener('change', syncSettingsFromUI);
@@ -158,8 +170,37 @@ function updateDisplay() {
     const recentData = dataBuffer.slice(-settings.windowSize);
     if (recentData.length === 0) return;
 
+    let dataForCompute = recentData;
+
+    if (settings.useRssiFilter) {
+        const finiteRssi = recentData
+            .map(item => item.rssi)
+            .filter(value => Number.isFinite(value));
+
+        if (finiteRssi.length > 0) {
+            const sortedRssi = [...finiteRssi].sort((a, b) => a - b);
+            const middle = Math.floor(sortedRssi.length / 2);
+            const medianRssi = sortedRssi.length % 2 === 0
+                ? (sortedRssi[middle - 1] + sortedRssi[middle]) / 2
+                : sortedRssi[middle];
+
+            const threshold = Math.max(1, settings.rssiThreshold);
+            const filtered = recentData.filter(item =>
+                !Number.isFinite(item.rssi) || Math.abs(item.rssi - medianRssi) <= threshold
+            );
+
+            if (filtered.length > 0) {
+                dataForCompute = filtered;
+            }
+        }
+    }
+
+    if (dataForCompute.length === 0) {
+        return;
+    }
+
     // Вычисление средних значений
-    const { avgDistance, avgRssi } = averagingStrategy.compute(recentData);
+    const { avgDistance, avgRssi } = averagingStrategy.compute(dataForCompute);
     if (!isFinite(avgDistance) || !isFinite(avgRssi)) {
         return;
     }
@@ -169,7 +210,7 @@ function updateDisplay() {
     document.getElementById('avgRssi').textContent = Math.round(avgRssi) + ' дБ';
 
     // Вычисление отклонений от среднего и среднеквадратичного отклонения
-    const deviationsArray = recentData.map(item => item.distance - avgDistance);
+    const deviationsArray = dataForCompute.map(item => item.distance - avgDistance);
     const squaredDeviations = deviationsArray.map(dev => dev * dev);
     const variance = squaredDeviations.reduce((sum, sqDev) => sum + sqDev, 0) / squaredDeviations.length;
     const standardDeviation = Math.sqrt(variance);
@@ -199,6 +240,8 @@ function syncSettingsFromUI() {
     const windowSizeInput = document.getElementById('windowSize');
     const updateIntervalInput = document.getElementById('updateInterval');
     const algorithmSelect = document.getElementById('algorithm');
+    const useRssiFilterInput = document.getElementById('useRssiFilter');
+    const rssiThresholdInput = document.getElementById('rssiThreshold');
     const maxSpeedInput = document.getElementById('maxSpeedKmh');
 
     const previousStrategyId = averagingStrategy?.id;
@@ -209,6 +252,13 @@ function syncSettingsFromUI() {
     settings.windowSize = parseInt(windowSizeInput?.value, 10) || settings.windowSize;
     settings.updateInterval = parseInt(updateIntervalInput?.value, 10) || settings.updateInterval;
     const parsedAlgorithm = algorithmSelect?.value || settings.algorithm;
+
+    settings.useRssiFilter = Boolean(useRssiFilterInput?.checked);
+
+    const parsedRssiThreshold = parseFloat(rssiThresholdInput?.value);
+    if (Number.isFinite(parsedRssiThreshold) && parsedRssiThreshold > 0) {
+        settings.rssiThreshold = parsedRssiThreshold;
+    }
 
     const parsedMaxSpeed = parseFloat(maxSpeedInput?.value);
     if (Number.isFinite(parsedMaxSpeed) && parsedMaxSpeed > 0) {
@@ -227,6 +277,11 @@ function syncSettingsFromUI() {
     const maxSpeedGroup = document.getElementById('maxSpeedGroup');
     if (maxSpeedGroup) {
         maxSpeedGroup.hidden = averagingStrategy.id !== 'kalmanFilter';
+    }
+
+    const rssiFilterGroup = document.getElementById('rssiFilterGroup');
+    if (rssiFilterGroup) {
+        rssiFilterGroup.hidden = !settings.useRssiFilter;
     }
 
     if (typeof averagingStrategy.setMaxSpeedKmh === 'function') {
