@@ -35,6 +35,14 @@
             </div>
 
             <div class="control-group">
+                <label for="dataViewMode">Представление данных</label>
+                <select id="dataViewMode">
+                    <option value="histogram">Гистограмма отклонений</option>
+                    <option value="waterfall">Водопад расстояния</option>
+                </select>
+            </div>
+
+            <div class="control-group">
                 <label>
                     <input type="checkbox" id="useRssiFilter">
                     Фильтровать скачки RSSI
@@ -59,20 +67,21 @@
             </div>
             
             <div class="value-card">
-                <div class="value-title">RSSI</div>
                 <div class="value" id="avgRssi">0 дБ</div>
             </div>
         </div>
         
         <div class="chart-container">
-            <canvas id="histogramChart"></canvas>
+            <canvas id="histogramChart" class="chart-canvas"></canvas>
+            <canvas id="waterfallCanvas" class="chart-canvas" hidden></canvas>
             <div class="stats">
                 <span id="totalSamples">Всего замеров: 0</span>
                 <span id="currentSD">Текущее СКО: 0.00 м</span>
+            </div>
+        </div>
         
         <button id="resetChart">Обнулить график</button>
     </div>
 
     <script type="module" src="script.js"></script>
 </body>
-</html>

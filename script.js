@@ -1,6 +1,6 @@
 // Переменные для хранения данных и состояния
 import { averagingFactory } from './averagingStrategies.js';
-import ChartManager from './chartManager.js';
+import ChartManager, { WaterfallRenderer } from './chartManager.js';
 import { hardwareTable, serialConfig, USBSerialManager } from './usbSerial.js';
 
 let dataBuffer = [];
@@ -14,13 +14,15 @@ const settings = {
     algorithm: 'movingAverage',
     maxSpeedKmh: 10,
     useRssiFilter: false,
-    rssiThreshold: 10
+    rssiThreshold: 10,
+    dataViewMode: 'histogram'
 };
 
 let averagingStrategy = averagingFactory.getStrategy(settings.algorithm);
 
 const histogramBins = 50;
 const chartManager = new ChartManager('histogramChart', histogramBins);
+const waterfallRenderer = new WaterfallRenderer('waterfallCanvas');
 
 const usbSerialManager = new USBSerialManager(hardwareTable, serialConfig);
 let port = null;
@@ -88,6 +90,7 @@ window.addEventListener('unhandledrejection', event => {
 
 document.addEventListener('DOMContentLoaded', () => {
     chartManager.init();
+    waterfallRenderer.init();
     registerEventListeners();
     syncSettingsFromUI();
     startUpdateInterval();
@@ -108,6 +111,11 @@ function registerEventListeners() {
     const algorithmSelect = document.getElementById('algorithm');
     if (algorithmSelect) {
         algorithmSelect.addEventListener('change', syncSettingsFromUI);
+    }
+
+    const dataViewModeSelect = document.getElementById('dataViewMode');
+    if (dataViewModeSelect) {
+        dataViewModeSelect.addEventListener('change', syncSettingsFromUI);
     }
 
     const useRssiFilterInput = document.getElementById('useRssiFilter');
@@ -215,6 +223,16 @@ function updateDisplay() {
     const variance = squaredDeviations.reduce((sum, sqDev) => sum + sqDev, 0) / squaredDeviations.length;
     const standardDeviation = Math.sqrt(variance);
 
+    const finiteDistances = dataForCompute
+        .map(item => item.distance)
+        .filter(value => Number.isFinite(value));
+
+    if (finiteDistances.length > 0) {
+        const minDistance = Math.min(...finiteDistances);
+        const maxDistance = Math.max(...finiteDistances);
+        waterfallRenderer.addSample(avgDistance, minDistance, maxDistance);
+    }
+
     // Добавление текущего отклонения в историю для гистограммы
     if (deviationsArray.length > 0) {
         const latestDeviation = deviationsArray[deviationsArray.length - 1];
@@ -227,11 +245,42 @@ function updateDisplay() {
         }
 
         // Обновление гистограммы
-        chartManager.update(deviations);
+        if (settings.dataViewMode === 'histogram') {
+            chartManager.update(deviations);
+        }
 
         // Обновление статистики
         document.getElementById('totalSamples').textContent = `Всего замеров: ${totalSamples}`;
         document.getElementById('currentSD').textContent = `Текущее СКО: ${standardDeviation.toFixed(2)} м`;
+    }
+}
+
+function updateViewMode(force = false) {
+    const histogramCanvas = document.getElementById('histogramChart');
+    const waterfallCanvas = document.getElementById('waterfallCanvas');
+    const showHistogram = settings.dataViewMode === 'histogram';
+
+    if (histogramCanvas) {
+        histogramCanvas.hidden = !showHistogram;
+    }
+
+    if (waterfallCanvas) {
+        waterfallCanvas.hidden = showHistogram;
+    }
+
+    waterfallRenderer.setActive(!showHistogram);
+
+    if (!showHistogram) {
+        waterfallRenderer.resizeCanvas();
+    }
+
+    if (showHistogram && chartManager?.chart) {
+        if (deviations.length > 0) {
+            chartManager.update(deviations);
+        }
+        chartManager.chart.resize();
+    } else if (force && chartManager?.chart) {
+        chartManager.chart.resize();
     }
 }
 
@@ -240,6 +289,7 @@ function syncSettingsFromUI() {
     const windowSizeInput = document.getElementById('windowSize');
     const updateIntervalInput = document.getElementById('updateInterval');
     const algorithmSelect = document.getElementById('algorithm');
+    const dataViewModeSelect = document.getElementById('dataViewMode');
     const useRssiFilterInput = document.getElementById('useRssiFilter');
     const rssiThresholdInput = document.getElementById('rssiThreshold');
     const maxSpeedInput = document.getElementById('maxSpeedKmh');
@@ -248,10 +298,12 @@ function syncSettingsFromUI() {
     const previousMaxSpeed = averagingStrategy?.id === 'kalmanFilter'
         ? averagingStrategy.maxSpeedKmh
         : null;
+    const previousViewMode = settings.dataViewMode;
 
     settings.windowSize = parseInt(windowSizeInput?.value, 10) || settings.windowSize;
     settings.updateInterval = parseInt(updateIntervalInput?.value, 10) || settings.updateInterval;
     const parsedAlgorithm = algorithmSelect?.value || settings.algorithm;
+    const parsedDataViewMode = dataViewModeSelect?.value || settings.dataViewMode;
 
     settings.useRssiFilter = Boolean(useRssiFilterInput?.checked);
 
@@ -266,6 +318,7 @@ function syncSettingsFromUI() {
     }
 
     settings.algorithm = parsedAlgorithm;
+    settings.dataViewMode = parsedDataViewMode;
 
     const newStrategy = averagingFactory.getStrategy(settings.algorithm);
     if (!newStrategy) {
@@ -295,6 +348,8 @@ function syncSettingsFromUI() {
         averagingStrategy.reset();
     }
 
+    updateViewMode(previousViewMode !== settings.dataViewMode);
+
     startUpdateInterval();
 }
 
@@ -313,6 +368,7 @@ function resetChart() {
     totalSamples = 0;
 
     chartManager.reset();
+    waterfallRenderer.reset();
 
     if (typeof averagingStrategy?.reset === 'function') {
         averagingStrategy.reset();
