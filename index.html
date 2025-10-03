@@ -12,6 +12,7 @@
         <h1>Мониторинг расстояния и RSSI</h1>
 
         <button id="connect">Connect</button>
+        <div id="connectError" class="error-message" role="alert" aria-live="polite" hidden></div>
         
         <div class="control-panel">
             <div class="control-group">
@@ -28,6 +29,7 @@
                 <label for="algorithm">Алгоритм усреднения</label>
                 <select id="algorithm">
                     <option value="movingAverage">Скользящее среднее</option>
+                    <option value="medianAverage">Медианное усреднение</option>
                 </select>
             </div>
         </div>
@@ -49,13 +51,10 @@
             <div class="stats">
                 <span id="totalSamples">Всего замеров: 0</span>
                 <span id="currentSD">Текущее СКО: 0.00 м</span>
-            </div>
-        </div>
         
         <button id="resetChart">Обнулить график</button>
     </div>
 
-    <script src="script.js"></script>
+    <script type="module" src="script.js"></script>
 </body>
 </html>
-
